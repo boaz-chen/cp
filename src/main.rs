@@ -78,8 +78,8 @@ fn main() -> io::Result<()> {
         path::Path::new(&args.target_filename),
         Config::new(Some(args.thread_count), Some(args.buffer_size)),
     )?;
-    let duration = Instant::elapsed(&start);
-    println!("Done in {}ms", duration.as_millis());
+    let duration = Instant::elapsed(&start).as_millis();
+    println!("Done in {duration}ms");
     Ok(())
 }
 
@@ -100,10 +100,7 @@ fn cp(source: &path::Path, target: &path::Path, config: Config) -> io::Result<()
     let mut join_handles = Vec::with_capacity(thread_count as usize);
     let total_bytes_per_thread = source_file_len.checked_div(thread_count as u64).unwrap();
 
-    println!(
-        "Copying {} bytes using {} threads",
-        source_file_len, thread_count
-    );
+    println!("Copying {source_file_len} bytes using {thread_count} threads");
 
     let (tx, rx): (mpsc::Sender<Status>, mpsc::Receiver<Status>) = mpsc::channel();
 
@@ -165,7 +162,7 @@ fn cp(source: &path::Path, target: &path::Path, config: Config) -> io::Result<()
 fn report_status(rx: Receiver<Status>, source_file_len: u64) -> io::Result<()> {
     const BLOCK: &str = "\u{2596}";
     const SCALE: u16 = 80;
-
+    let blue_block = BLOCK.with(Color::DarkGreen);
     io::stdout().execute(cursor::Hide)?;
     io::stdout().execute(cursor::SavePosition)?;
 
@@ -174,7 +171,7 @@ fn report_status(rx: Receiver<Status>, source_file_len: u64) -> io::Result<()> {
         let col = col + (SCALE as f64 * (received.offset as f64 / source_file_len as f64)) as u16;
 
         io::stdout().execute(crossterm::cursor::MoveTo(col, row))?;
-        print!("{}", BLOCK.with(Color::DarkGreen));
+        print!("{blue_block}");
         io::stdout().flush()?;
         io::stdout().execute(crossterm::cursor::RestorePosition)?;
     }
