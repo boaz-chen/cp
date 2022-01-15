@@ -11,7 +11,7 @@ use std::{
 use crossterm::{
     cursor,
     style::{Color, Stylize},
-    ExecutableCommand,
+    terminal, ExecutableCommand,
 };
 
 use clap::Parser;
@@ -34,7 +34,7 @@ impl Config {
 struct Status {
     _timestamp: i64,
     _thread_idx: u8,
-    _bytes_written: usize,
+    bytes_written: usize,
     offset: u64,
 }
 
@@ -43,7 +43,7 @@ impl Status {
         Status {
             _timestamp: chrono::offset::Local::now().timestamp_millis(),
             _thread_idx: thread_idx,
-            _bytes_written: bytes_written,
+            bytes_written,
             offset,
         }
     }
@@ -99,8 +99,9 @@ fn cp(source: &path::Path, target: &path::Path, config: Config) -> io::Result<()
     );
     let mut join_handles = Vec::with_capacity(thread_count as usize);
     let total_bytes_per_thread = source_file_len.checked_div(thread_count as u64).unwrap();
-
-    println!("Copying {source_file_len} bytes using {thread_count} threads");
+    let buffer_size = buffer_size.min(total_bytes_per_thread as usize);
+    println!("total_bytes_per_thread: {total_bytes_per_thread}");
+    println!("Copying {source_file_len} bytes using {thread_count} threads and a {buffer_size} bytes buffer");
 
     let (tx, rx): (mpsc::Sender<Status>, mpsc::Receiver<Status>) = mpsc::channel();
 
@@ -161,20 +162,29 @@ fn cp(source: &path::Path, target: &path::Path, config: Config) -> io::Result<()
 
 fn report_status(rx: Receiver<Status>, source_file_len: u64) -> io::Result<()> {
     const BLOCK: &str = "\u{2596}";
-    const SCALE: u16 = 80;
-    let blue_block = BLOCK.with(Color::DarkGreen);
+
+    let terminal_col_count = terminal::size()?.0;
+    let block = BLOCK.with(Color::DarkGreen);
     io::stdout().execute(cursor::Hide)?;
     io::stdout().execute(cursor::SavePosition)?;
 
     let (col, row) = cursor::position()?;
-    for received in rx {
-        let col = col + (SCALE as f64 * (received.offset as f64 / source_file_len as f64)) as u16;
+
+    for status in rx {
+        let col = col
+            + (terminal_col_count as f64 * (status.offset as f64 / source_file_len as f64)) as u16;
+        let count = (terminal_col_count as f64
+            * (status.bytes_written as f64 / source_file_len as f64)) as usize;
+        let count = count.max(1);
 
         io::stdout().execute(crossterm::cursor::MoveTo(col, row))?;
-        print!("{blue_block}");
+        for _ in 0..count {
+            print!("{block}");
+        }
         io::stdout().flush()?;
-        io::stdout().execute(crossterm::cursor::RestorePosition)?;
     }
+
+    io::stdout().execute(crossterm::cursor::RestorePosition)?;
     println!();
     io::stdout().execute(cursor::Show)?;
 
